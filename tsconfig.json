@@ -8,6 +8,9 @@
     },
     {
       "path": "./apps/react"
+    },
+    {
+      "path": "./libs/core"
     }
   ]
 }

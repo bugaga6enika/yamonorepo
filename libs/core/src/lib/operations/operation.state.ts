@@ -1,0 +1,1 @@
+export type OperationState = "idle" | "running" | "finished" | "canceled" | "failed";

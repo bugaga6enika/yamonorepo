@@ -1,3 +1,7 @@
 {
-  "singleQuote": true
+  "singleQuote": true,
+  "parser":"typescript",
+  "bracketSpacing": true,
+  "bracketSameLine": true,
+  "printWidth": 140
 }
