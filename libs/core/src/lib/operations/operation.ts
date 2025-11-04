@@ -46,8 +46,6 @@ export abstract class Operation<TResult> implements IOperation<TResult, Operatio
   stateChange: (state: OperationState, details: OperationError | OperationResult<TResult> | undefined) => void;
 
   protected setState(state: OperationState, details: OperationError | OperationResult<TResult> | undefined = undefined) {
-    if((state === '') this._state !== 'idle')
-
     this._state = state;
     this.stateChange?.(state, details);
   }
