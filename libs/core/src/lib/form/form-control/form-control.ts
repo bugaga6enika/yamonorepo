@@ -11,9 +11,7 @@ export class FormControl<T> implements IFormControl<T> {
   private _errors: ValidationError | undefined = undefined;
 
   private readonly _validatorFactories: Array<ValidatorFnFactory<T>> = [];
-  private readonly _eventDispatcher = new EventDispatcher<
-    FormControlEvent<T>
-  >();
+  private readonly _eventDispatcher = new EventDispatcher<FormControlEvent<T>>();
 
   constructor(value: T, options?: FormControlOption<T>) {
     this._value = value;
@@ -95,7 +93,7 @@ export class FormControl<T> implements IFormControl<T> {
   }
 
   disable(): void {
-    const old = this._disabled;
+    const old = !this._disabled;
     this._disabled = true;
     if (!areEquals(old, true)) {
       this._eventDispatcher.dispatch({
@@ -107,7 +105,7 @@ export class FormControl<T> implements IFormControl<T> {
   }
 
   enable(): void {
-    const old = this._disabled;
+    const old = !this._disabled;
     this._disabled = false;
     if (!areEquals(old, false)) {
       this._eventDispatcher.dispatch({
@@ -126,17 +124,11 @@ export class FormControl<T> implements IFormControl<T> {
     this._eventDispatcher.removeEventsListener(eventListener);
   }
 
-  addEventListener(
-    event: string,
-    eventListener: EventListener<FormControlEvent<T>>
-  ): void {
+  addEventListener(event: string, eventListener: EventListener<FormControlEvent<T>>): void {
     this._eventDispatcher.addEventListener(event, eventListener);
   }
 
-  removeEventListener(
-    event: string,
-    eventListener: EventListener<FormControlEvent<T>>
-  ): void {
+  removeEventListener(event: string, eventListener: EventListener<FormControlEvent<T>>): void {
     this._eventDispatcher.removeEventListener(event, eventListener);
   }
 

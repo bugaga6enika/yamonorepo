@@ -6,6 +6,6 @@ describe('Operation', () => {
   it('should throw if name is not presented', () => {
     const factory = () =>
       new TestOperation(undefined as unknown as string, undefined as unknown as (abortSignal: AbortSignal) => Promise<string>);
-    expect(factory).toThrowError('Name is not presented');
+    expect(factory).toThrowError('A null reference recieved for the expected instance of -- name --');
   });
 });
