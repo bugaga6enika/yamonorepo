@@ -8,7 +8,7 @@ export default [
     files: ['**/*.ts', '**/*.js'],
     // Override or add rules here
     rules: {
-      '@typescript-eslint/no-empty-object-type': 'warning',
+      '@typescript-eslint/no-empty-object-type': 'warn',
     },
   },
 ];
