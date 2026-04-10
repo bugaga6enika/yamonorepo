@@ -1,0 +1,26 @@
+{
+  "name": "@repo/web-client",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next build",
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "dev": "NEXT_IGNORE_INCORRECT_LOCKFILE=1 next dev --port 3000",
+    "lint": "eslint .",
+    "start": "next start --port 3000"
+  },
+  "dependencies": {
+    "next": "^16.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "*",
+    "@repo/typescript-config": "*",
+    "@types/node": "^24.7.2",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.2"
+  }
+}
