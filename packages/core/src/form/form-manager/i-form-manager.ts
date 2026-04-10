@@ -3,7 +3,7 @@ import { IClearable } from '../../clearable';
 import { IEventSource } from '../../event-source';
 import { IToggleable } from '../../toggle';
 import { IValidatable } from '../../validation';
-import { IFormControl } from '../form-control';
+import { AnyFormNode, FormNodeAtPath, FormPath, IFormNode } from '../i-form';
 import { FormManagerEvent } from './form-manager.events';
 
 export interface IFormManager<TForm, TResult>
@@ -12,9 +12,10 @@ export interface IFormManager<TForm, TResult>
     IToggleable,
     IEventSource<FormManagerEvent<TForm[keyof TForm]>>,
     IClearable {
-  controls: IterableIterator<[keyof TForm, IFormControl<TForm[keyof TForm]>]>;
-  getControl(
-    fieldKey: keyof TForm
-  ): IFormControl<TForm[keyof TForm]> | undefined;
+  controls: IterableIterator<[keyof TForm, IFormNode<TForm[keyof TForm], TResult>]>;
+  getControl<TPath extends FormPath<TForm>>(
+    fieldKey: TPath
+  ): FormNodeAtPath<TForm, TPath, TResult> | undefined;
+  getControl(fieldKey: string): AnyFormNode<TResult> | undefined;
   submit(abortSignal: AbortSignal): Promise<TResult>;
 }

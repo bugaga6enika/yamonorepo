@@ -1,4 +1,4 @@
-import { IFormControl } from '../form';
+import { AnyFormNode, FormNodeAtPath, FormPath } from '../form';
 import { ValidationError } from './validation-error';
 
 export type ValidatorFn<T> = (value: T) => ValidationError | undefined;
@@ -8,9 +8,10 @@ export interface IValidator<T> {
 }
 
 export type ValidatorFnConfigurationOptions<TFormData> = {
-  controlOf: (
-    path: keyof TFormData
-  ) => IFormControl<TFormData[keyof TFormData]> | undefined;
+  controlOf<TPath extends FormPath<TFormData>>(
+    path: TPath
+  ): FormNodeAtPath<TFormData, TPath> | undefined;
+  controlOf(path: string): AnyFormNode | undefined;
 };
 
 export type ValidatorFnConfiguration<TFormData, TValue> = (

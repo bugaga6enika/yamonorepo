@@ -2,6 +2,7 @@ import {
   ValidationError,
   ValidatorFn,
   ValidatorFnConfiguration,
+  ValidatorFnConfigurationOptions,
 } from '../../validation';
 import { IFormManager } from './i-form-manager';
 import { FormControlEvent, IFormControl } from '../form-control/i-form-control';
@@ -10,22 +11,26 @@ import { entries } from '../../utils';
 import { EventDispatcher, EventListener } from '../../event-source';
 import { isBusyChangeEventFactory } from '../../busy';
 import { FormManagerEvent } from './form-manager.events';
+import { createFormProxy } from '../form-proxy';
+import { AnyFormNode, FormNodeAtPath, FormPath, IFormNode } from '../i-form';
 
-export type FormManagerFieldOption<TFormData> = {
-  validators?: Array<
-    ValidatorFnConfiguration<TFormData, TFormData[keyof TFormData]>
-  >;
+export type FormManagerFieldOption<TFormData, TValue> = {
+  validators?: Array<ValidatorFnConfiguration<TFormData, TValue>>;
   disabled?: boolean;
 };
 
-export type FormManagerOptions<
-  TFormData extends Record<keyof TFormData, TFormData[keyof TFormData]>
-> = Partial<Record<keyof TFormData, FormManagerFieldOption<TFormData>>>;
+export type FormManagerOptions<TFormData extends Record<string, unknown>> = {
+  [TKey in keyof TFormData]?: TFormData[TKey] extends Record<string, unknown>
+    ? FormManagerOptions<TFormData[TKey]>
+    : FormManagerFieldOption<TFormData, TFormData[TKey]>;
+};
 
-export class FormManager<
-  TFormData extends Record<keyof TFormData, TFormData[keyof TFormData]>,
-  TResult
-> implements IFormManager<TFormData, TResult>
+type FormManagerControl<TValue, TResult> =
+  | IFormControl<TValue>
+  | FormManager<Extract<TValue, Record<string, unknown>>, TResult>;
+
+export class FormManager<TFormData extends Record<string, unknown>, TResult>
+  implements IFormManager<TFormData, TResult>
 {
   private _isBusy = false;
   private _isValid = true;
@@ -37,12 +42,17 @@ export class FormManager<
 
   protected readonly controlsMap = new Map<
     keyof TFormData,
-    IFormControl<TFormData[keyof TFormData]>
+    FormManagerControl<TFormData[keyof TFormData], TResult>
   >();
 
   protected readonly _validatorsMap = new Map<
     keyof TFormData,
     ValidatorFn<unknown>
+  >();
+
+  private readonly proxiedControlsMap = new Map<
+    keyof TFormData,
+    IFormNode<TFormData[keyof TFormData], TResult>
   >();
 
   get isValid(): boolean {
@@ -62,7 +72,7 @@ export class FormManager<
   }
 
   get controls() {
-    return this.controlsMap.entries();
+    return this.getControls();
   }
 
   constructor(
@@ -71,18 +81,47 @@ export class FormManager<
     private readonly _action?: (
       abortSignal: AbortSignal,
       context: TFormData
-    ) => Promise<TResult>
+    ) => Promise<TResult>,
+    private readonly controlResolver?: (
+      path: string
+    ) => AnyFormNode<TResult> | undefined
   ) {
     // Initialize controls for each field in the form
     for (const [key, value] of entries(form)) {
       const fieldOptions = options?.[key];
+
+      if (isFormGroupValue(value)) {
+        const nestedManager = new FormManager(
+          value,
+          fieldOptions as FormManagerOptions<typeof value>,
+          undefined,
+          this.resolveControlPath.bind(this)
+        );
+
+        nestedManager.addEventsListener((event) =>
+          this.onNestedEvent(key, event as FormManagerEvent<TFormData[keyof TFormData]>)
+        );
+        this.controlsMap.set(
+          key,
+          nestedManager as FormManagerControl<TFormData[keyof TFormData], TResult>
+        );
+        continue;
+      }
+
       const control = new FormControl(value, {
-        disabled: fieldOptions?.disabled,
-        validatorFactories: fieldOptions?.validators
+        disabled: (fieldOptions as FormManagerFieldOption<
+          TFormData,
+          typeof value
+        > | undefined)?.disabled,
+        validatorFactories: (
+          fieldOptions as FormManagerFieldOption<TFormData, typeof value> | undefined
+        )?.validators
           ?.map((validator) => {
             if (typeof validator === 'function') {
               return validator.bind(this, {
-                controlOf: this.getControl.bind(this),
+                controlOf: ((path: string) =>
+                  this.controlResolver?.(String(path)) ??
+                  this.getControl(String(path))) as ValidatorFnConfigurationOptions<TFormData>['controlOf'],
               });
             }
 
@@ -93,10 +132,7 @@ export class FormManager<
 
       control.addEventsListener((event) => this.onEvent(key, event));
 
-      this.controlsMap.set(
-        key,
-        control as IFormControl<TFormData[keyof TFormData]>
-      );
+      this.controlsMap.set(key, control);
     }
   }
 
@@ -165,13 +201,7 @@ export class FormManager<
     this._isBusy = true;
     this._eventDispatcher.dispatch(isBusyChangeEventFactory(false, true));
 
-    const formData: TFormData = {} as TFormData;
-
-    for (const [key, entry] of this.controlsMap.entries()) {
-      if (!entry.isDisabled && entry.isValid) {
-        formData[key] = entry.value;
-      }
-    }
+    const formData = this.getData();
     try {
       return await this._action(abortSignal, formData);
     } catch (error) {
@@ -182,10 +212,12 @@ export class FormManager<
     }
   }
 
-  getControl(
-    fieldKey: keyof TFormData
-  ): IFormControl<TFormData[keyof TFormData]> | undefined {
-    return this.controlsMap.get(fieldKey);
+  getControl<TPath extends FormPath<TFormData>>(
+    path: TPath
+  ): FormNodeAtPath<TFormData, TPath, TResult> | undefined;
+  getControl(path: string): AnyFormNode<TResult> | undefined;
+  getControl(path: string): AnyFormNode<TResult> | undefined {
+    return this.resolveControlPath(String(path));
   }
 
   clear(): void {
@@ -205,4 +237,107 @@ export class FormManager<
       control: controlKey as string,
     });
   }
+
+  private *getControls(): IterableIterator<
+    [keyof TFormData, IFormNode<TFormData[keyof TFormData], TResult>]
+  > {
+    for (const [key] of this.controlsMap.entries()) {
+      const control = this.getDirectControl(key);
+      if (control) {
+        yield [key, control];
+      }
+    }
+  }
+
+  private getData(): TFormData {
+    const formData = {} as TFormData;
+
+    for (const [key, entry] of this.controlsMap.entries()) {
+      if (entry.isDisabled || !entry.isValid) {
+        continue;
+      }
+
+      if (entry instanceof FormManager) {
+        formData[key] = entry.getData() as TFormData[keyof TFormData];
+        continue;
+      }
+
+      formData[key] = entry.value;
+    }
+
+    return formData;
+  }
+
+  private onNestedEvent(
+    controlKey: keyof TFormData,
+    event: FormManagerEvent<TFormData[keyof TFormData]>
+  ) {
+    if ('control' in event) {
+      this._eventDispatcher.dispatch({
+        ...event,
+        control: `${String(controlKey)}.${event.control}`,
+      });
+      return;
+    }
+
+    this._eventDispatcher.dispatch(event);
+  }
+
+  private resolveControlPath(path: string): AnyFormNode<TResult> | undefined {
+    const normalizedPath = path.trim();
+    if (!normalizedPath) {
+      return undefined;
+    }
+
+    if (this.controlResolver && normalizedPath.includes('.')) {
+      return this.controlResolver(normalizedPath);
+    }
+
+    const [currentKey, ...rest] = normalizedPath.split('.');
+    const control = this.getDirectControl(currentKey as keyof TFormData);
+
+    if (!control) {
+      return undefined;
+    }
+
+    if (rest.length === 0) {
+      return control;
+    }
+
+    if (!(control instanceof FormManager)) {
+      return undefined;
+    }
+
+    return control.resolveControlPath(rest.join('.'));
+  }
+
+  private getDirectControl(
+    fieldKey: keyof TFormData
+  ): IFormNode<TFormData[keyof TFormData], TResult> | undefined {
+    const existingProxy = this.proxiedControlsMap.get(fieldKey);
+    if (existingProxy) {
+      return existingProxy;
+    }
+
+    const control = this.controlsMap.get(fieldKey);
+    if (!control) {
+      return undefined;
+    }
+
+    if (control instanceof FormManager) {
+      const proxy = createFormProxy(control);
+      this.proxiedControlsMap.set(
+        fieldKey,
+        proxy as IFormNode<TFormData[keyof TFormData], TResult>
+      );
+      return proxy as IFormNode<TFormData[keyof TFormData], TResult>;
+    }
+
+    return control as IFormNode<TFormData[keyof TFormData], TResult>;
+  }
 }
+
+const isFormGroupValue = (
+  value: unknown
+): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -1,34 +1,12 @@
-import { NullReferenceError } from '../errors';
-import { FormManagerFieldOption, FormManager } from './form-manager';
+import { FormManager, FormManagerOptions } from './form-manager';
 import { IForm } from './i-form';
+import { createFormProxy } from './form-proxy';
 
-export const form = <
-  TSchema extends Record<string, TSchema[keyof TSchema]>,
-  TResult
->(
+export const form = <TSchema extends Record<string, unknown>, TResult>(
   schema: TSchema,
-  options?: Partial<Record<keyof TSchema, FormManagerFieldOption<TSchema>>>,
+  options?: FormManagerOptions<TSchema>,
   submit?: (abortSignal: AbortSignal, context: TSchema) => Promise<TResult>
 ): IForm<TSchema, TResult> => {
-  const form = new FormManager<TSchema, TResult>(schema, options, submit);
-  const proxy = new Proxy(form, {
-    get(target, prop) {
-      const formManagerProp =
-        target[prop as keyof FormManager<TSchema, TResult>];
-
-      if (formManagerProp) {
-        return formManagerProp;
-      }
-
-      const control = target.getControl(prop as string);
-
-      if (!control) {
-        throw new NullReferenceError(`${String(prop)}.`);
-      }
-
-      return control;
-    },
-  });
-
-  return proxy as unknown as IForm<TSchema, TResult>;
+  const manager = new FormManager<TSchema, TResult>(schema, options, submit);
+  return createFormProxy(manager);
 };
